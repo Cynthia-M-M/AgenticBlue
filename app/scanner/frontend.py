@@ -6,11 +6,14 @@ No JS engine required.
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List
 
 from app.analyzer.contracts import FrontendCall
+
+log = logging.getLogger("contractflow.scanner.frontend")
 
 # Matches: fetch("/some/path", { method: "POST", ..., body: JSON.stringify({...}) })
 # We capture the path and the stringified object in two separate passes.
@@ -46,20 +49,20 @@ def _extract_fields_from_object_literal(body: str) -> List[str]:
     return fields
 
 
-def _find_fetch_blocks(source: str) -> List[dict]:
+def _find_fetch_blocks(source: str) -> List[Dict[str, object]]:
     """
     Find all fetch() call-sites in `source`.
     Returns list of dicts with keys: path, method, fields.
     """
-    results = []
+    results: List[Dict[str, object]] = []
     for match in _FETCH_CALL_RE.finditer(source):
         path = match.group("path")
-        # Grab a window of ~400 chars after the path to find method + body
+        # Grab a window of ~600 chars after the match start to find method + body
         window_start = match.start()
         window_end = min(len(source), match.start() + 600)
         window = source[window_start:window_end]
 
-        # Determine HTTP method (default POST when body is present, else GET)
+        # Determine HTTP method (default GET; POST inferred when body is present)
         method_match = _METHOD_RE.search(window)
         method = method_match.group("method").upper() if method_match else "GET"
 
@@ -87,19 +90,24 @@ def scan_frontend(directory: Path) -> List[FrontendCall]:
     for js_file in sorted(directory.rglob("*.js")):
         try:
             source = js_file.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            log.warning("scan_frontend: cannot read %s — %s", js_file, exc)
             continue
 
         rel_file = str(js_file.relative_to(directory))
-        for block in _find_fetch_blocks(source):
+        blocks = _find_fetch_blocks(source)
+        log.debug("scan_frontend: %s — %d fetch call(s) found", rel_file, len(blocks))
+        for block in blocks:
             calls.append(
                 FrontendCall(
-                    method=block["method"],
-                    path=block["path"],
+                    method=str(block["method"]),
+                    path=str(block["path"]),
                     file=rel_file,
-                    fields=block["fields"],
+                    fields=list(block["fields"]),  # type: ignore[arg-type]
                 )
             )
+
+    log.info("scan_frontend: %d frontend call(s) extracted", len(calls))
     return calls
 
 

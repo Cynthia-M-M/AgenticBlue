@@ -3,16 +3,23 @@ Repair planner — generates, applies, and verifies repairs for contract drift.
 """
 from __future__ import annotations
 
+import logging
+import re
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
 from typing import List
 
-from app.analyzer.contracts import DriftReport, FieldMismatch, RepairPlan, VerificationResult
+from app.analyzer.contracts import DriftReport, RepairPlan, VerificationResult
 from app.analyzer.drift import detect_drift
 from app.scanner.backend import scan_backend
 from app.scanner.frontend import scan_frontend
+
+log = logging.getLogger("contractflow.repair")
+
+# Subprocess timeout for pytest runs (seconds)
+_PYTEST_TIMEOUT = 60
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +64,7 @@ def generate_repair_plan(
                 )
             )
 
+    log.info("generate_repair_plan: %d plans generated", len(plans))
     return plans
 
 
@@ -94,16 +102,22 @@ def apply_repair(plan: RepairPlan) -> bool:
     """
     target = Path(plan.file)
     if not target.exists():
+        log.error("apply_repair: file not found: %s", plan.file)
         print(f"  [FAIL] File not found: {plan.file}")
         return False
 
     source = target.read_text(encoding="utf-8")
     if plan.old_text not in source:
+        log.warning(
+            "apply_repair: text '%s' not found in %s — already repaired?",
+            plan.old_text, plan.file,
+        )
         print(f"  [FAIL] Text '{plan.old_text}' not found in {plan.file} — already repaired?")
         return False
 
     patched = source.replace(plan.old_text, plan.new_text)
     target.write_text(patched, encoding="utf-8")
+    log.info("apply_repair: patched %s (%s → %s)", plan.file, plan.old_text, plan.new_text)
     return True
 
 
@@ -119,6 +133,7 @@ def add_regression_test(plan: RepairPlan, test_dir: Path) -> bool:
     test_dir = Path(test_dir)
     test_files = sorted(test_dir.rglob("test_*.py"))
     if not test_files:
+        log.warning("add_regression_test: no test files found under %s", test_dir)
         print(f"  [FAIL] No test files found under {test_dir}")
         return False
 
@@ -128,6 +143,7 @@ def add_regression_test(plan: RepairPlan, test_dir: Path) -> bool:
     # Avoid duplicating the regression test
     func_sig = f"async def test_contract_{plan.new_text}_field_name"
     if func_sig in existing:
+        log.info("add_regression_test: already present in %s", target.name)
         print(f"  [SKIP]  Regression test already present in {target.name}")
         return True
 
@@ -143,6 +159,7 @@ def add_regression_test(plan: RepairPlan, test_dir: Path) -> bool:
 
     appended = existing.rstrip("\n") + "\n" + import_block + plan.regression_test_snippet
     target.write_text(appended, encoding="utf-8")
+    log.info("add_regression_test: appended to %s", target.name)
     return True
 
 
@@ -163,23 +180,14 @@ def reset_demo(repo_path: Path) -> None:
     api_js = repo_path / "frontend" / "api.js"
     if api_js.exists():
         src = api_js.read_text(encoding="utf-8")
-        if "doctor_id: doctorId" not in src and "doctor_id:" in src:
-            patched = src.replace(
-                "doctor_id: doctorId",  # already correct form if reset not needed
-                "doctor_id: doctorId",
-            )
-            # More targeted: replace the corrected snake_case key back to camelCase
-            patched = src
-            # Replace "            doctor_id: doctorId" pattern back
-            import re
-            patched = re.sub(
-                r"\bdoctor_id\b(?=\s*:)",
-                "doctorId",
-                src,
-            )
+        # Replace snake_case key back to camelCase (only the key, not the value)
+        patched = re.sub(r"\bdoctor_id\b(?=\s*:)", "doctorId", src)
+        if patched != src:
             api_js.write_text(patched, encoding="utf-8")
+            log.info("reset_demo: reset api.js doctor_id → doctorId")
             print("  [OK] Reset api.js: doctor_id -> doctorId")
         else:
+            log.info("reset_demo: api.js already in broken state")
             print("  [SKIP]  api.js already in broken state")
 
     # Remove regression test blocks (lines starting with the func signature)
@@ -190,6 +198,7 @@ def reset_demo(repo_path: Path) -> None:
         if marker in src:
             idx = src.index(marker)
             tf.write_text(src[:idx] + "\n", encoding="utf-8")
+            log.info("reset_demo: removed regression test from %s", tf.name)
             print(f"  [OK] Removed regression test from {tf.name}")
 
 
@@ -204,29 +213,34 @@ def verify(repo_path: Path) -> VerificationResult:
     Returns a VerificationResult with pass/fail counts and raw pytest output.
     """
     repo_path = Path(repo_path)
+    log.info("verify: scanning repo=%s", repo_path)
 
     # Re-scan
     backend_contracts = scan_backend(repo_path / "backend")
     frontend_calls = scan_frontend(repo_path / "frontend")
     drift_reports = detect_drift(frontend_calls, backend_contracts)
     drift_clean = not any(r.has_drift for r in drift_reports)
+    log.info("verify: drift_clean=%s", drift_clean)
 
-    # Run pytest
+    # Run pytest with a timeout to avoid hanging
     test_dir = repo_path / "tests"
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", str(test_dir), "-v", "--tb=short"],
-        capture_output=True,
-        text=True,
-        cwd=str(repo_path.parent),  # run from the project root so imports resolve
-    )
-    output = result.stdout + result.stderr
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", str(test_dir), "-v", "--tb=short"],
+            capture_output=True,
+            text=True,
+            timeout=_PYTEST_TIMEOUT,
+            cwd=str(repo_path.parent),  # run from project root so imports resolve
+        )
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        log.error("verify: pytest timed out after %ds", _PYTEST_TIMEOUT)
+        output = f"[ERROR] pytest timed out after {_PYTEST_TIMEOUT}s"
 
     # Parse pass/fail counts from pytest summary line
     passed = 0
     failed = 0
     for line in output.splitlines():
-        # e.g. "2 passed, 1 failed in 0.42s"
-        import re
         p = re.search(r"(\d+) passed", line)
         f = re.search(r"(\d+) failed", line)
         if p:
@@ -234,6 +248,7 @@ def verify(repo_path: Path) -> VerificationResult:
         if f:
             failed = int(f.group(1))
 
+    log.info("verify: passed=%d failed=%d", passed, failed)
     return VerificationResult(
         drift_clean=drift_clean,
         tests_passed=passed,

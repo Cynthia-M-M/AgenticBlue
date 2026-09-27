@@ -7,7 +7,7 @@ operate on these structures.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ class FieldDef:
     name: str
     type_annotation: str = "unknown"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, str]:
         return {"name": self.name, "type": self.type_annotation}
 
 
@@ -37,7 +37,7 @@ class RouteContract:
     fields: List[FieldDef] = field(default_factory=list)
     file: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "method": self.method,
             "path": self.path,
@@ -55,7 +55,7 @@ class FrontendCall:
     file: str            # relative path
     fields: List[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "method": self.method,
             "path": self.path,
@@ -75,7 +75,7 @@ class FieldMismatch:
     backend_field: str
     drift_type: str      # "FIELD_NAME_MISMATCH" | "MISSING_FIELD" | "EXTRA_FIELD"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, str]:
         return {
             "frontend_field": self.frontend_field,
             "backend_field": self.backend_field,
@@ -96,7 +96,7 @@ class DriftReport:
     def has_drift(self) -> bool:
         return len(self.mismatches) > 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "endpoint": self.endpoint,
             "frontend_file": self.frontend_file,
@@ -116,7 +116,7 @@ class AgentFinding:
     agent_name: str
     findings: List[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {"agent": self.agent_name, "findings": self.findings}
 
 
@@ -135,7 +135,7 @@ class RepairPlan:
     risk: str = "LOW"
     regression_test_snippet: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, str]:
         return {
             "endpoint": self.endpoint,
             "file": self.file,
@@ -154,10 +154,14 @@ class VerificationResult:
     tests_failed: int
     test_output: str
 
-    def to_dict(self) -> dict:
+    # Maximum characters of pytest output to include in serialised responses
+    _OUTPUT_LIMIT: int = field(default=4000, init=False, repr=False)
+
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "drift_clean": self.drift_clean,
             "tests_passed": self.tests_passed,
             "tests_failed": self.tests_failed,
-            "test_output": self.test_output,
+            # Truncate from the end to keep the most recent pytest output
+            "test_output": self.test_output[-self._OUTPUT_LIMIT:],
         }

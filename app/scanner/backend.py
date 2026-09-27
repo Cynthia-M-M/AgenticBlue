@@ -6,16 +6,19 @@ No runtime import of the target project. AST-only.
 from __future__ import annotations
 
 import ast
+import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app.analyzer.contracts import FieldDef, RouteContract
+
+log = logging.getLogger("contractflow.scanner.backend")
 
 # HTTP method decorator names we recognise
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
-def _extract_decorator_route(decorator: ast.expr) -> Optional[tuple[str, str]]:
+def _extract_decorator_route(decorator: ast.expr) -> Optional[Tuple[str, str]]:
     """
     Given a decorator node, return (method, path) if it looks like
     @app.post("/foo") or @router.get("/bar"), else None.
@@ -109,12 +112,16 @@ def scan_backend(directory: Path) -> List[RouteContract]:
     contracts: List[RouteContract] = []
 
     # First pass: collect all model definitions across all files
-    model_registry: Dict[str, tuple[List[FieldDef], str]] = {}  # name → (fields, file)
+    model_registry: Dict[str, Tuple[List[FieldDef], str]] = {}  # name → (fields, file)
     for py_file in sorted(directory.rglob("*.py")):
         try:
             source = py_file.read_text(encoding="utf-8")
             tree = ast.parse(source, filename=str(py_file))
-        except (SyntaxError, OSError):
+        except SyntaxError as exc:
+            log.warning("scan_backend: syntax error in %s — %s", py_file, exc)
+            continue
+        except OSError as exc:
+            log.warning("scan_backend: cannot read %s — %s", py_file, exc)
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
@@ -124,12 +131,18 @@ def scan_backend(directory: Path) -> List[RouteContract]:
                     rel = str(py_file.relative_to(directory))
                     model_registry[node.name] = (fields, rel)
 
+    log.info("scan_backend: %d model(s) found in registry", len(model_registry))
+
     # Second pass: find route decorators and match schemas
     for py_file in sorted(directory.rglob("*.py")):
         try:
             source = py_file.read_text(encoding="utf-8")
             tree = ast.parse(source, filename=str(py_file))
-        except (SyntaxError, OSError):
+        except SyntaxError as exc:
+            log.warning("scan_backend: syntax error in %s — %s", py_file, exc)
+            continue
+        except OSError as exc:
+            log.warning("scan_backend: cannot read %s — %s", py_file, exc)
             continue
 
         rel_file = str(py_file.relative_to(directory))
@@ -156,12 +169,13 @@ def scan_backend(directory: Path) -> List[RouteContract]:
                         file=rel_file,
                     )
                 )
+
+    log.info("scan_backend: %d route contract(s) extracted", len(contracts))
     return contracts
 
 
 if __name__ == "__main__":
     import sys
-    from pathlib import Path
 
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("demo_project/backend")
     results = scan_backend(target)

@@ -358,6 +358,38 @@
   .pill-red    { background: rgba(248,81,73,0.15);   color: var(--red); }
   .pill-green  { background: rgba(63,185,80,0.15);   color: var(--green); }
   .pill-yellow { background: rgba(210,153,34,0.15);  color: var(--yellow); }
+
+  /* ── Drift History ── */
+  .history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .history-table th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .history-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--surface2);
+    color: var(--text);
+    font-family: "Consolas", monospace;
+    font-size: 12px;
+  }
+  .history-table tr:last-child td { border-bottom: none; }
+  .history-table tr:hover td { background: var(--surface2); }
+  .history-empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 20px 0;
+    font-size: 13px;
+  }
 </style>
 </head>
 <body>
@@ -433,6 +465,15 @@
   <!-- Stage 6: Verification -->
   <div class="hidden" id="cardVerify">
     <div id="verifyContent"></div>
+  </div>
+
+  <!-- Drift History -->
+  <div class="card" id="cardHistory" style="margin-top:32px;">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+      <span><span class="dot dot-purple" style="display:inline-block;margin-right:8px;"></span>Drift History</span>
+      <span id="historyRunCount" style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;"></span>
+    </div>
+    <div id="historyContent"><div class="history-empty">No analysis runs yet — click Analyze Repository to start.</div></div>
   </div>
 
 </main>
@@ -530,6 +571,9 @@
     } else {
       show('cardNoDrift');
     }
+
+    // Refresh history panel after every analysis run
+    loadDriftHistory();
   });
 
   // ── Contract Map ───────────────────────────────────────────────────────────
@@ -705,22 +749,70 @@
     location.reload();
   });
 
+  // ── Drift History ──────────────────────────────────────────────────────────
+  async function loadDriftHistory() {
+    try {
+      const r = await fetch('/api/drift-history');
+      const data = await r.json();
+      renderDriftHistory(data.history || [], data.total_runs || 0);
+    } catch (_) { /* server not yet ready — silently skip */ }
+  }
+
+  function renderDriftHistory(records, totalRuns) {
+    const countEl = $('historyRunCount');
+    countEl.textContent = totalRuns === 0
+      ? ''
+      : `${totalRuns} total run${totalRuns !== 1 ? 's' : ''}`;
+
+    const container = $('historyContent');
+    if (!records || records.length === 0) {
+      container.innerHTML = '<div class="history-empty">No analysis runs yet — click Analyze Repository to start.</div>';
+      return;
+    }
+
+    const rows = records.map(rec => {
+      const ts = rec.timestamp
+        ? new Date(rec.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' })
+        : '—';
+      const driftCount = rec.drift_count ?? 0;
+      const driftPill = driftCount > 0
+        ? `<span class="pill pill-red">${driftCount} drift${driftCount > 1 ? 's' : ''}</span>`
+        : `<span class="pill pill-green">clean</span>`;
+      const repoShort = escHtml((rec.repo_path || '').split(/[\\/]/).pop() || rec.repo_path || '—');
+      return `<tr>
+        <td>${escHtml(ts)}</td>
+        <td title="${escHtml(rec.repo_path || '')}">${repoShort}</td>
+        <td>${rec.backend_routes ?? '—'}</td>
+        <td>${rec.frontend_calls ?? '—'}</td>
+        <td>${driftPill}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Repo</th>
+            <th>Backend Routes</th>
+            <th>Frontend Calls</th>
+            <th>Drift</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
-    // Try to auto-detect the demo path via a known marker
     $('repoPath').value = '';
-    // Fetch the server's demo path suggestion
-    fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo_path: '__probe__' })
-    }).catch(() => {});
-    // Just set a sensible default displayed path
     $('repoPath').placeholder = 'e.g. /path/to/demo_project';
     // Pre-fill with the demo path from the server if available
     fetch('/api/demo-path').then(r => r.json()).then(d => {
       if (d && d.path) $('repoPath').value = d.path;
     }).catch(() => {});
+    // Load drift history on page open
+    loadDriftHistory();
   });
 </script>
 

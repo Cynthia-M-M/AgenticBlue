@@ -9,7 +9,7 @@ async function createAppointment(patientId, doctor_id) {
         },
         body: JSON.stringify({
             patient_id: patientId,
-            doctorId: doctor_id      // <-- intentional drift: should be doctor_id
+            doctor_id: doctor_id      // <-- intentional drift: should be doctor_id
         })
     });
 

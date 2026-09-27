@@ -43,3 +43,18 @@ async def test_create_appointment_frontend_drift_bug():
     # doctor_id must be flagged as missing
     assert any("doctor_id" in loc for loc in field_errors)
 
+
+@pytest.mark.anyio
+async def test_contract_doctor_id_field_name():
+    """Regression: verify frontend sends 'doctor_id', not 'doctorId'."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/appointments",
+            json={"patient_id": 99, "doctor_id": 1},
+        )
+    assert response.status_code == 200, (
+        f"Contract regression: {response.status_code} — "
+        f"ensure frontend sends 'doctor_id' not 'doctorId'"
+    )

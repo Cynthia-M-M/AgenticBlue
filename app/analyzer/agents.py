@@ -13,20 +13,25 @@ At runtime they are fast deterministic Python functions.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import List
 
 from app.analyzer.contracts import AgentFinding, DriftReport, FrontendCall, RouteContract
 from app.scanner.tests import scan_tests
 
+log = logging.getLogger("contractflow.agents")
+
 
 def investigate_frontend(frontend_calls: List[FrontendCall]) -> AgentFinding:
     """Agent 1 — summarise what the frontend believes the API contract is."""
     findings: List[str] = []
     if not frontend_calls:
+        log.warning("investigate_frontend: no frontend API calls found")
         findings.append("No frontend API calls found.")
         return AgentFinding(agent_name="Frontend Investigator", findings=findings)
 
+    log.info("investigate_frontend: %d call(s) found", len(frontend_calls))
     for call in frontend_calls:
         findings.append(f"Endpoint: {call.method} {call.path}")
         findings.append(f"File: {call.file}")
@@ -43,9 +48,11 @@ def investigate_backend(route_contracts: List[RouteContract]) -> AgentFinding:
     """Agent 2 — summarise what the backend actually accepts."""
     findings: List[str] = []
     if not route_contracts:
+        log.warning("investigate_backend: no backend routes found")
         findings.append("No backend routes found.")
         return AgentFinding(agent_name="Backend Investigator", findings=findings)
 
+    log.info("investigate_backend: %d route(s) found", len(route_contracts))
     for rc in route_contracts:
         findings.append(f"Endpoint: {rc.method} {rc.path}")
         findings.append(f"Schema: {rc.schema_name}")
@@ -64,10 +71,11 @@ def investigate_impact(drift_reports: List[DriftReport]) -> AgentFinding:
     """Agent 3 — list affected endpoints, files, and features."""
     findings: List[str] = []
     if not drift_reports:
+        log.info("investigate_impact: no drift detected")
         findings.append("No drift detected — no impact to report.")
         return AgentFinding(agent_name="Impact Investigator", findings=findings)
 
-    affected_files = set()
+    affected_files: set[str] = set()
     for report in drift_reports:
         findings.append(f"Endpoint at risk: {report.endpoint}")
         affected_files.add(report.frontend_file)
@@ -88,6 +96,10 @@ def investigate_impact(drift_reports: List[DriftReport]) -> AgentFinding:
     )
     findings.append("Impact: Integration tests relying on the frontend client will fail.")
 
+    log.info(
+        "investigate_impact: %d drifted endpoint(s), %d affected file(s)",
+        len(drift_reports), len(affected_files),
+    )
     return AgentFinding(agent_name="Impact Investigator", findings=findings)
 
 
@@ -107,10 +119,18 @@ def investigate_tests(
             drifted_fields.append(m.backend_field)
 
     if not drifted_fields:
+        log.info("investigate_tests: no drift fields to check coverage for")
         findings.append("No drift to check coverage for.")
         return AgentFinding(agent_name="Test Investigator", findings=findings)
 
     coverage = scan_tests(Path(test_dir), field_names=list(set(drifted_fields)))
+
+    log.info(
+        "investigate_tests: %d test file(s), covered=%s uncovered=%s",
+        len(coverage["test_files"]),
+        coverage["covered_fields"],
+        coverage["uncovered_fields"],
+    )
 
     findings.append(f"Test files found: {len(coverage['test_files'])}")
     for tf in coverage["test_files"]:
