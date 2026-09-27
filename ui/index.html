@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ContractFlow — AgenticBlue</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+    --radius: 8px;
+    --font: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+  header .badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  header .subtitle {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* ── Layout ── */
+  main {
+    max-width: 960px;
+    margin: 32px auto;
+    padding: 0 24px;
+  }
+
+  /* ── Pipeline bar ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 32px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .pipeline-step {
+    flex: 1;
+    text-align: center;
+    padding: 12px 8px;
+    font-size: 12px;
+    color: var(--muted);
+    border-right: 1px solid var(--border);
+    transition: background 0.2s, color 0.2s;
+    position: relative;
+  }
+  .pipeline-step:last-child { border-right: none; }
+  .pipeline-step .step-num {
+    display: block;
+    font-size: 18px;
+    margin-bottom: 2px;
+  }
+  .pipeline-step.active { background: var(--surface2); color: var(--accent); }
+  .pipeline-step.done { color: var(--green); }
+  .pipeline-step.error { color: var(--red); }
+
+  /* ── Control bar ── */
+  .controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+    align-items: center;
+  }
+  .repo-input {
+    flex: 1;
+    min-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: "Consolas", monospace;
+  }
+  .repo-input:focus { outline: none; border-color: var(--accent); }
+
+  button {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
+  .btn-warn    { background: var(--yellow); color: #0d1117; border-color: var(--yellow); font-weight: 600; }
+  .btn-green   { background: var(--green);  color: #0d1117; border-color: var(--green);  font-weight: 600; }
+  .btn-ghost   { background: transparent;   color: var(--muted); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot-blue   { background: var(--accent); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-green  { background: var(--green); }
+  .dot-purple { background: var(--purple); }
+  .dot-red    { background: var(--red); }
+
+  /* ── Contract map ── */
+  .contract-map {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .cm-node {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 24px;
+    min-width: 220px;
+    text-align: center;
+    font-size: 13px;
+  }
+  .cm-node.drift { border-color: var(--red); color: var(--red); }
+  .cm-node.ok    { border-color: var(--green); }
+  .cm-arrow {
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    padding: 4px 0;
+  }
+  .cm-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: -6px;
+    margin-bottom: 2px;
+  }
+
+  /* ── Drift alert ── */
+  .drift-alert {
+    background: rgba(248,81,73,0.08);
+    border: 1px solid var(--red);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .drift-alert .drift-header {
+    font-weight: 700;
+    color: var(--red);
+    margin-bottom: 8px;
+    font-size: 15px;
+  }
+  .drift-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .drift-side {
+    flex: 1;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 10px 14px;
+  }
+  .drift-side .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .drift-side .value {
+    font-family: "Consolas", monospace;
+    font-size: 14px;
+  }
+  .drift-side.frontend .value { color: var(--red); }
+  .drift-side.backend  .value { color: var(--green); }
+
+  /* ── Agent panels ── */
+  .agent-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) { .agent-grid { grid-template-columns: 1fr; } }
+  .agent-panel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .agent-panel .agent-name {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 10px;
+    color: var(--purple);
+  }
+  .agent-panel ul {
+    list-style: none;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .agent-panel ul li.finding { color: var(--text); }
+  .agent-panel ul li.warn { color: var(--yellow); }
+
+  /* ── Repair ── */
+  .repair-card {
+    background: rgba(210,153,34,0.06);
+    border: 1px solid var(--yellow);
+  }
+  .repair-diff {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-family: "Consolas", monospace;
+    font-size: 13px;
+    margin: 12px 0;
+  }
+  .diff-old { color: var(--red);   }
+  .diff-new { color: var(--green); }
+  .diff-ctx { color: var(--muted); }
+
+  /* ── Verified ── */
+  .verified-box {
+    background: rgba(63,185,80,0.08);
+    border: 2px solid var(--green);
+    border-radius: var(--radius);
+    padding: 32px;
+    text-align: center;
+  }
+  .verified-box .check { font-size: 48px; color: var(--green); line-height: 1; }
+  .verified-box h2 { font-size: 24px; color: var(--green); margin: 12px 0 8px; }
+  .verified-box .stats {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 20px;
+  }
+  .stat { text-align: center; }
+  .stat .num { font-size: 28px; font-weight: 700; color: var(--text); }
+  .stat .lbl { font-size: 11px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+
+  /* ── Failed box ── */
+  .failed-box {
+    background: rgba(248,81,73,0.08);
+    border: 2px solid var(--red);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-align: center;
+  }
+  .failed-box h2 { color: var(--red); font-size: 20px; margin-bottom: 8px; }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Hidden ── */
+  .hidden { display: none !important; }
+
+  /* ── Log ── */
+  pre.log {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-family: "Consolas", monospace;
+    font-size: 12px;
+    color: var(--muted);
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* ── Pill ── */
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .pill-red    { background: rgba(248,81,73,0.15);   color: var(--red); }
+  .pill-green  { background: rgba(63,185,80,0.15);   color: var(--green); }
+  .pill-yellow { background: rgba(210,153,34,0.15);  color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ContractFlow</h1>
+  <span class="badge">AgenticBlue</span>
+  <span class="badge">IBM Bob 2.0 Hackathon</span>
+  <span class="subtitle">Frontend–Backend API Contract Drift Detection &amp; Repair</span>
+</header>
+
+<main>
+
+  <!-- Pipeline -->
+  <div class="pipeline">
+    <div class="pipeline-step active" id="ps-1"><span class="step-num">1</span>Scan</div>
+    <div class="pipeline-step"        id="ps-2"><span class="step-num">2</span>Contract Map</div>
+    <div class="pipeline-step"        id="ps-3"><span class="step-num">3</span>Drift</div>
+    <div class="pipeline-step"        id="ps-4"><span class="step-num">4</span>Investigate</div>
+    <div class="pipeline-step"        id="ps-5"><span class="step-num">5</span>Repair</div>
+    <div class="pipeline-step"        id="ps-6"><span class="step-num">6</span>Verify</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input class="repo-input" id="repoPath" type="text" value="" placeholder="Repository path…" />
+    <button class="btn-primary" id="btnAnalyze">Analyze Repository</button>
+    <button class="btn-ghost hidden" id="btnInvestigate">Investigate</button>
+    <button class="btn-warn  hidden" id="btnRepair">Apply Repair</button>
+    <button class="btn-green hidden" id="btnVerify">Verify</button>
+    <button class="btn-ghost hidden" id="btnReset">Reset Demo</button>
+  </div>
+
+  <!-- Stage 1: Scan counts -->
+  <div class="card hidden" id="cardScan">
+    <div class="card-title"><span class="dot dot-blue"></span>Repository Scan</div>
+    <div id="scanSummary"></div>
+  </div>
+
+  <!-- Stage 2: Contract Map -->
+  <div class="card hidden" id="cardMap">
+    <div class="card-title"><span class="dot dot-blue"></span>Contract Map</div>
+    <div class="contract-map" id="contractMap"></div>
+  </div>
+
+  <!-- Stage 3: Drift -->
+  <div class="card hidden" id="cardDrift">
+    <div class="card-title"><span class="dot dot-red"></span>Contract Drift Detected</div>
+    <div id="driftContent"></div>
+  </div>
+
+  <!-- No drift -->
+  <div class="card hidden" id="cardNoDrift">
+    <div style="text-align:center; padding: 24px 0;">
+      <div style="font-size:48px; color:var(--green)">✓</div>
+      <div style="font-size:18px; color:var(--green); margin-top:8px;">No Contract Drift Detected</div>
+      <div style="color:var(--muted); margin-top:4px;">All frontend–backend contracts are aligned.</div>
+    </div>
+  </div>
+
+  <!-- Stage 4: Agent Investigation -->
+  <div class="card hidden" id="cardInvestigate">
+    <div class="card-title"><span class="dot dot-purple"></span>Agent Investigation</div>
+    <div class="agent-grid" id="agentGrid"></div>
+  </div>
+
+  <!-- Stage 5: Repair -->
+  <div class="card repair-card hidden" id="cardRepair">
+    <div class="card-title"><span class="dot dot-yellow"></span>Repair Plan</div>
+    <div id="repairContent"></div>
+  </div>
+
+  <!-- Stage 6: Verification -->
+  <div class="hidden" id="cardVerify">
+    <div id="verifyContent"></div>
+  </div>
+
+</main>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let _analyzeData = null;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const show = id => $(id).classList.remove('hidden');
+  const hide = id => $(id).classList.add('hidden');
+
+  function setStep(n) {
+    for (let i = 1; i <= 6; i++) {
+      const el = $(`ps-${i}`);
+      el.classList.remove('active', 'done');
+      if (i < n)  el.classList.add('done');
+      if (i === n) el.classList.add('active');
+    }
+  }
+
+  function loading(btnId, label) {
+    const btn = $(btnId);
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span>${label}`;
+  }
+
+  function restore(btnId, label) {
+    const btn = $(btnId);
+    btn.disabled = false;
+    btn.innerHTML = label;
+  }
+
+  async function api(endpoint, body) {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return r.json();
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Analyze ────────────────────────────────────────────────────────────────
+  $('btnAnalyze').addEventListener('click', async () => {
+    const repo = $('repoPath').value.trim();
+    if (!repo) { alert('Enter a repository path'); return; }
+
+    loading('btnAnalyze', 'Scanning…');
+    hide('cardScan'); hide('cardMap'); hide('cardDrift');
+    hide('cardNoDrift'); hide('cardInvestigate');
+    hide('cardRepair'); hide('cardVerify');
+    hide('btnInvestigate'); hide('btnRepair'); hide('btnVerify'); hide('btnReset');
+
+    const data = await api('/api/analyze', { repo_path: repo });
+    _analyzeData = data;
+    restore('btnAnalyze', 'Analyze Repository');
+
+    // Scan card
+    const bc = data.backend_contracts || [];
+    const fc = data.frontend_calls || [];
+    const dr = data.drift_reports || [];
+    const driftCount = data.drift_count || 0;
+
+    $('scanSummary').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+        <div>✓ Backend routes found: <strong>${bc.length}</strong></div>
+        <div>✓ Frontend API calls found: <strong>${fc.length}</strong></div>
+        <div>✓ Schemas found: <strong>${bc.filter(r=>r.schema_name).length}</strong></div>
+        <div>${driftCount > 0
+          ? `<span class="pill pill-red">⚠ ${driftCount} drift${driftCount>1?'s':''} detected</span>`
+          : `<span class="pill pill-green">✓ No drift</span>`}
+        </div>
+      </div>`;
+    show('cardScan');
+    setStep(2);
+
+    // Contract map
+    renderContractMap(bc, fc, dr);
+    show('cardMap');
+    setStep(3);
+
+    // Drift
+    if (driftCount > 0) {
+      renderDrift(dr);
+      show('cardDrift');
+      show('btnInvestigate');
+      show('btnRepair');
+    } else {
+      show('cardNoDrift');
+    }
+  });
+
+  // ── Contract Map ───────────────────────────────────────────────────────────
+  function renderContractMap(bc, fc, dr) {
+    const driftedEndpoints = new Set((dr || []).flatMap(r => r.mismatches.length ? [r.endpoint] : []));
+    const map = $('contractMap');
+    map.innerHTML = '';
+
+    // Frontend layer
+    const fcFiles = [...new Set((fc||[]).map(c=>c.file))];
+    addNode(map, 'Frontend', fcFiles.join(', ') || '—', driftedEndpoints.size > 0 ? 'drift' : 'ok');
+    addArrow(map);
+
+    // Endpoints
+    (bc||[]).forEach(route => {
+      const ep = `${route.method} ${route.path}`;
+      const hasDrift = driftedEndpoints.has(ep);
+      addLabel(map, ep);
+      addNode(map, route.schema_name || 'Route', route.file, hasDrift ? 'drift' : 'ok');
+      addArrow(map);
+    });
+
+    addNode(map, 'Database / Tests', '—', 'ok');
+  }
+
+  function addNode(parent, title, sub, cls) {
+    const d = document.createElement('div');
+    d.className = `cm-node ${cls}`;
+    d.innerHTML = `<strong>${escHtml(title)}</strong><br><span style="font-size:11px;color:var(--muted)">${escHtml(sub)}</span>`;
+    parent.appendChild(d);
+  }
+  function addArrow(parent) {
+    const d = document.createElement('div'); d.className='cm-arrow'; d.textContent='↓';
+    parent.appendChild(d);
+  }
+  function addLabel(parent, text) {
+    const d = document.createElement('div'); d.className='cm-label'; d.textContent=text;
+    parent.appendChild(d);
+  }
+
+  // ── Drift ──────────────────────────────────────────────────────────────────
+  function renderDrift(reports) {
+    const out = $('driftContent');
+    out.innerHTML = '';
+    (reports||[]).forEach(r => {
+      if (!r.mismatches || !r.mismatches.length) return;
+      const div = document.createElement('div');
+      div.className = 'drift-alert';
+      let html = `<div class="drift-header">⚠ ${escHtml(r.endpoint)}</div>`;
+      html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Schema: <code>${escHtml(r.schema_name)}</code></div>`;
+      r.mismatches.forEach(m => {
+        html += `<div class="drift-row">
+          <div class="drift-side frontend">
+            <div class="label">Frontend sends</div>
+            <div class="value">${escHtml(m.frontend_field)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">${escHtml(r.frontend_file)}</div>
+          </div>
+          <div style="display:flex;align-items:center;font-size:20px;color:var(--red)">≠</div>
+          <div class="drift-side backend">
+            <div class="label">Backend expects</div>
+            <div class="value">${escHtml(m.backend_field)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">${escHtml(r.backend_file)}</div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;">
+          <span class="pill pill-red">${escHtml(m.drift_type)}</span>
+        </div>`;
+      });
+      div.innerHTML = html;
+      out.appendChild(div);
+    });
+  }
+
+  // ── Investigate ────────────────────────────────────────────────────────────
+  $('btnInvestigate').addEventListener('click', async () => {
+    const repo = $('repoPath').value.trim();
+    loading('btnInvestigate', 'Investigating…');
+    const data = await api('/api/investigate', { repo_path: repo });
+    restore('btnInvestigate', 'Investigate');
+
+    const grid = $('agentGrid');
+    grid.innerHTML = '';
+    (data.findings || []).forEach(f => {
+      const panel = document.createElement('div');
+      panel.className = 'agent-panel';
+      const items = (f.findings || []).filter(l => l.trim()).map(line => {
+        const warn = line.startsWith('⚠');
+        return `<li class="${warn?'warn':'finding'}">${escHtml(line)}</li>`;
+      }).join('');
+      panel.innerHTML = `<div class="agent-name">${escHtml(f.agent)}</div><ul>${items}</ul>`;
+      grid.appendChild(panel);
+    });
+
+    show('cardInvestigate');
+    setStep(4);
+  });
+
+  // ── Repair ─────────────────────────────────────────────────────────────────
+  $('btnRepair').addEventListener('click', async () => {
+    const repo = $('repoPath').value.trim();
+    loading('btnRepair', 'Applying repair…');
+    const data = await api('/api/repair', { repo_path: repo });
+    restore('btnRepair', 'Apply Repair');
+
+    const content = $('repairContent');
+    if (!data.plans || data.plans.length === 0) {
+      content.innerHTML = '<p style="color:var(--muted)">No repairs needed or repair already applied.</p>';
+    } else {
+      content.innerHTML = data.plans.map(p => `
+        <div style="margin-bottom:16px;">
+          <div style="font-size:13px;margin-bottom:6px;">
+            <strong>${escHtml(p.endpoint)}</strong>
+            <span class="pill pill-green" style="margin-left:8px;">Applied</span>
+          </div>
+          <div class="repair-diff">
+            <div class="diff-old">- ${escHtml(p.old_text)}</div>
+            <div class="diff-new">+ ${escHtml(p.new_text)}</div>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">
+            Reason: ${escHtml(p.reason)}<br>
+            Risk: <span class="pill pill-green">${escHtml(p.risk)}</span>
+            &nbsp; File: <code>${escHtml(p.file)}</code>
+          </div>
+        </div>`).join('');
+    }
+
+    show('cardRepair');
+    setStep(5);
+    show('btnVerify');
+    hide('btnRepair');
+    show('btnReset');
+  });
+
+  // ── Verify ─────────────────────────────────────────────────────────────────
+  $('btnVerify').addEventListener('click', async () => {
+    const repo = $('repoPath').value.trim();
+    loading('btnVerify', 'Verifying…');
+    const data = await api('/api/verify', { repo_path: repo });
+    restore('btnVerify', 'Verify');
+
+    const content = $('verifyContent');
+    if (data.drift_clean && data.tests_failed === 0) {
+      content.innerHTML = `
+        <div class="verified-box">
+          <div class="check">✓</div>
+          <h2>CONTRACT VERIFIED</h2>
+          <p style="color:var(--muted)">API contract restored. All tests pass.</p>
+          <div class="stats">
+            <div class="stat"><div class="num">0</div><div class="lbl">Drift</div></div>
+            <div class="stat"><div class="num">${data.tests_passed}</div><div class="lbl">Tests Passed</div></div>
+            <div class="stat"><div class="num">${data.tests_failed}</div><div class="lbl">Tests Failed</div></div>
+          </div>
+        </div>`;
+    } else {
+      content.innerHTML = `
+        <div class="failed-box">
+          <h2>Verification Failed</h2>
+          <p>Drift clean: ${data.drift_clean} | Passed: ${data.tests_passed} | Failed: ${data.tests_failed}</p>
+          <pre class="log" style="margin-top:12px;text-align:left">${escHtml(data.test_output || '')}</pre>
+        </div>`;
+    }
+    show('cardVerify');
+    setStep(6);
+    hide('btnVerify');
+  });
+
+  // ── Reset ──────────────────────────────────────────────────────────────────
+  $('btnReset').addEventListener('click', async () => {
+    const repo = $('repoPath').value.trim();
+    if (!confirm('Reset demo to broken state?')) return;
+    await api('/api/reset', { repo_path: repo });
+    // Full page reset
+    location.reload();
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    // Try to auto-detect the demo path via a known marker
+    $('repoPath').value = '';
+    // Fetch the server's demo path suggestion
+    fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_path: '__probe__' })
+    }).catch(() => {});
+    // Just set a sensible default displayed path
+    $('repoPath').placeholder = 'e.g. /path/to/demo_project';
+    // Pre-fill with the demo path from the server if available
+    fetch('/api/demo-path').then(r => r.json()).then(d => {
+      if (d && d.path) $('repoPath').value = d.path;
+    }).catch(() => {});
+  });
+</script>
+
+</body>
+</html>
